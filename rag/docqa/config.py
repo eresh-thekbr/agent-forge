@@ -1,3 +1,5 @@
+import os
+
 from dotenv import load_dotenv
 
 # Every other module in this package reads its settings from here,
@@ -15,3 +17,20 @@ CHAT_MODEL = "claude-haiku-4-5-20251001"
 
 # Same embedding model used in rag/09_vector_store.py and rag/10_retriever_tool.py.
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+
+# Which vector store to use: "faiss" (default, local file, no setup) or
+# "pgvector" (stores vectors in your local Postgres instead). Opt in by
+# setting VECTOR_BACKEND=pgvector in your .env file.
+VECTOR_BACKEND = os.getenv("VECTOR_BACKEND", "faiss")
+
+# Only used when VECTOR_BACKEND=pgvector. Point this at your local Postgres
+# (override in .env if your user/password/db differ from these defaults).
+PG_CONNECTION_STRING = os.getenv(
+    "PG_CONNECTION_STRING",
+    "postgresql+psycopg://postgres:postgres@localhost:5432/postgres",
+)
+PG_TABLE_NAME = "docqa_chunks"
+
+# all-MiniLM-L6-v2 always outputs 384-dimensional vectors — pgvector's
+# table needs to know this size up front to create the column.
+EMBEDDING_DIM = 384
