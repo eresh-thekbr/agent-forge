@@ -1,7 +1,10 @@
 # docqa
 
-A tiny RAG (Retrieval-Augmented Generation) proof-of-concept: ask questions
-about your own PDF and get answers grounded in its actual content.
+A tiny RAG (Retrieval-Augmented Generation) backend: loads a PDF, chunks it,
+embeds it into a searchable vector index, and answers questions grounded in
+its actual content. This package is UI-agnostic — it has no terminal or
+browser code of its own. For ways to actually talk to it, see
+[`frontend/README.md`](../../frontend/README.md).
 
 ## Setup
 
@@ -21,15 +24,9 @@ uv run python -m rag.docqa.retriever_tool   # 4. search the index for relevant c
 uv run python -m rag.docqa.agent            # 5. ask one question, get a grounded answer
 ```
 
-## Chat with your PDF
-
-Once the index is built (step 3 has run at least once):
-
-```
-uv run python -m rag.docqa
-```
-
-Ask anything about your document; type `exit` or `quit` to stop.
+Once the index is built (step 3 has run at least once), see
+[`frontend/README.md`](../../frontend/README.md) for the terminal chat and
+browser UI that actually let you talk to it.
 
 ## Optional: use Postgres instead of FAISS
 

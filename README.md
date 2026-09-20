@@ -17,5 +17,7 @@ uv run python -m rag.docqa.splitter
 uv run python -m rag.docqa.vectorstore
 uv run python -m rag.docqa.retriever_tool
 uv run python -m rag.docqa.agent
-uv run python -m rag.docqa          # interactive chat
+
+uv run python -m frontend              # interactive terminal chat
+uv run streamlit run frontend/ui.py    # browser chat UI
 ```
