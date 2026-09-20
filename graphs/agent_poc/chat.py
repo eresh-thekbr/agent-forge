@@ -4,7 +4,7 @@ from graphs.agent_poc.agent import build_workflow
 
 # A fresh checkpointer per run, one thread_id for the whole session — that
 # combination is what makes this an actual back-and-forth conversation
-# instead of the one-question-at-a-time behavior of rag/docqa/chat.py.
+# instead of the one-question-at-a-time behavior of frontend/chat.py.
 graph = build_workflow().compile(checkpointer=InMemorySaver())
 config = {"configurable": {"thread_id": "chat-session"}}
 
