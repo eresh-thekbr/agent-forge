@@ -49,5 +49,8 @@ graph = build_workflow().compile()
 if __name__ == "__main__":
     question = "What is this document about?"
     result = graph.invoke({"messages": [{"role": "user", "content": question}]})
-    print(f"Q: {question}")
-    print(f"A: {result['messages'][-1].content}")
+    # print(f"Q: {question}")
+    # print(f"A: {result['messages'][-1].content}")
+    for event in graph.stream({"messages": [{"role": "user", "content": question}]}):
+        print(event)
+

@@ -26,4 +26,5 @@ graph = graph_builder.compile()
 if __name__ == "__main__":
     question = "Say hi in one short sentence."
     result = graph.invoke({"messages": [{"role": "user", "content": question}]})
+    print(result["messages"])
     print(result["messages"][-1].content)
