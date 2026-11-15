@@ -19,25 +19,24 @@ later files look like magic until the earlier ones are boring.
 
 **Part A — mechanics.** Pure Python, no API key, runs instantly.
 
-| # | Concept | Run it | Status |
-|---|---------|--------|--------|
-| 1 | **State** — the shared dict every node reads and writes | `uv run python -m graphs.agent_poc.hello_graph` | done |
-| 2 | **Nodes & edges** — chaining, and how updates accumulate | `uv run python -m graphs.agent_poc.sequential_nodes` | done |
-| 3 | **Reducers** — the merge-vs-append rule | `uv run python -m graphs.agent_poc.reducers` | done |
-| 4 | **Conditional edges** — picking the next node at runtime | `uv run python -m graphs.agent_poc.conditional_routing` | done |
-| 5 | **Cycles** — an edge pointing backwards, and `recursion_limit` | `uv run python -m graphs.agent_poc.cycles` | done |
-| 6 | **Streaming** — watching each node fire, for debugging | `uv run python -m graphs.agent_poc.streaming` | next |
+| # | Concept | Run it |
+|---|---------|--------|
+| 1 | **State** — the shared dict every node reads and writes | `uv run python -m graphs.agent_poc.hello_graph` |
+| 2 | **Nodes & edges** — chaining, and how updates accumulate | `uv run python -m graphs.agent_poc.sequential_nodes` |
+| 3 | **Reducers** — the merge-vs-append rule | `uv run python -m graphs.agent_poc.reducers` |
+| 4 | **Conditional edges** — picking the next node at runtime | `uv run python -m graphs.agent_poc.conditional_routing` |
+| 5 | **Cycles** — an edge pointing backwards, and `recursion_limit` | `uv run python -m graphs.agent_poc.cycles` |
+| 6 | **Streaming** — watching each node fire, for debugging | `uv run python -m graphs.agent_poc.streaming` |
 
 **Part B — the real agent.** Calls Claude, needs the FAISS index.
 
-| # | Concept | Run it | Status |
-|---|---------|--------|--------|
-| 7 | **A model inside a node** — `MessagesState` | `uv run python -m graphs.agent_poc.chat_node` | done |
-| 8 | **Tools & the agent loop** — `ToolNode`, `tools_condition` | `uv run python -m graphs.agent_poc.agent` | done |
-| 9 | **Checkpointer & `thread_id`** — multi-turn memory | `uv run python -m graphs.agent_poc.memory` | done |
+| # | Concept | Run it |
+|---|---------|--------|
+| 7 | **A model inside a node** — `MessagesState` | `uv run python -m graphs.agent_poc.chat_node` |
+| 8 | **Tools & the agent loop** — `ToolNode`, `tools_condition` | `uv run python -m graphs.agent_poc.agent` |
+| 9 | **Checkpointer & `thread_id`** — multi-turn memory | `uv run python -m graphs.agent_poc.memory` |
 
-Lessons 3, 5 and 6 don't have files yet — they get written when you reach
-them. Part B is just Part A applied, with an LLM in the box.
+Part B is just Part A applied, with an LLM in the box.
 
 ## Chat with memory
 
