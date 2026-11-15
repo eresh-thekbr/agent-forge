@@ -1,105 +1,117 @@
-# MCP POC: Data Pipeline Triage (PostgreSQL)
+# Pipeline Triage: an MCP server for failed-ETL investigation
 
-A small, read-only MCP server that lets an AI assistant answer:
+A read-only [Model Context Protocol](https://modelcontextprotocol.io) server that lets an on-call data engineer ask an AI assistant *"Which pipelines failed on 2026-11-15, and why?"* and get an answer grounded in the pipeline audit table, without giving the assistant database credentials or the ability to run arbitrary SQL.
 
-> "Which pipelines failed on November 15, 2026, and why?"
+## The problem
 
-Python + the official MCP Python SDK (v2) + PostgreSQL. No LLM API key is needed to run or test the server.
+Every morning the on-call data engineer has to answer the same question before downstream consumers (dashboards, finance reports, ML features) notice stale data: **what failed overnight, and why?**
 
-## The idea in two pictures
+The answer is already in the orchestrator's run-audit table: status, source, target and error message for every job execution. But getting it means switching to a SQL client, remembering the schema, writing the same query again, and then reading each error and classifying it (re-run it, or escalate to the source owner).
 
-How MCP works in general (host, client, server, and who does what):
+Engineers already work alongside AI assistants, so the obvious step is to let the assistant do this lookup. The two naive ways to do that are both unacceptable:
+
+| Option | Why not |
+|---|---|
+| Give the assistant a database login and let it write SQL | The model gets credentials and unrestricted query power over production data. Result quality depends on the model guessing the schema and the meaning of "failed" correctly every time. |
+| Build a bespoke integration for one assistant | Tied to one vendor and rebuilt for every new tool (IDE, chat app, agent framework). |
+
+**This POC solves a narrow version of that problem.** It exposes exactly two purpose-built, read-only operations over the audit table through MCP, an open protocol that any compatible AI host can discover and call. The assistant decides *when* to use them, but it can only ever do *what they allow*.
+
+Scope: failure triage for a single business date. No writes, no remediation and no alerting.
+
+## How it works
+
+![End-to-end flow of one triage question](docs/diagrams/mcp-poc-flow.svg)
+
+1. The engineer asks Claude Code in plain English.
+2. At startup Claude Code discovered the server's tools and their schemas. Claude (the LLM) decides to call `list_failed_runs("2026-11-15")`.
+3. The MCP client sends a JSON-RPC `tools/call` to this server over stdio. The server queries PostgreSQL in a read-only transaction.
+4. The result (runs 202 and 203) gives Claude no cause yet, so **it decides on its own** to call `get_run_details` for each run.
+5. Claude explains the failures and classifies them: run 202 is infrastructure (a lost Spark executor, so re-run it) and run 203 is a data-contract break (escalate to the payments producer).
+
+The answer and messages in the diagram come from a real run against the seeded demo data.
+
+<details>
+<summary>Background: where MCP's host, client and server sit</summary>
 
 ![Generic MCP architecture](docs/diagrams/mcp-concept.svg)
 
-What happens in this POC: two tool calls and one answer, using the real messages:
+</details>
 
-![POC round trip](docs/diagrams/mcp-poc-flow.svg)
+## Design decisions
 
-## Files
+| Decision | Rationale |
+|---|---|
+| **Two narrow tools instead of `run_sql`** | The tool surface *is* the security boundary. Narrow tools also keep domain rules ("failed" means `status = 'FAILED'`) in code instead of in the model's guesswork. |
+| **Read-only enforced by PostgreSQL** | Every connection sets `read_only = True`, so writes fail in the database (`ReadOnlySqlTransaction`) even if the code regressed. In production, add a `SELECT`-only role. |
+| **Typed contracts end to end** | Tool inputs (`business_date: date`) and outputs (pydantic models) produce the JSON Schemas the model sees during discovery. Invalid input is rejected by schema validation before any SQL runs. |
+| **Domain layer independent of MCP** | `PipelineRunRepository` has no MCP imports. The same queries could back a CLI, REST API or scheduled report. `server.py` is a thin adapter. |
+| **`build_server(repository)` factory** | Dependency injection: tests drive the real server in-process through an MCP client, and the entry point wires in the production repository. |
+| **Errors written for the model** | `ToolError` messages ("No pipeline run exists with run_id=999") reach the model so it can correct itself. Unexpected exceptions are hidden from it, so internals don't leak. |
+| **stdio transport** | The host launches the server as a local subprocess: no port, no network exposure, and per-user credentials. Streamable HTTP is the path to a shared team service (see below). |
+| **Configuration from the environment** | Uses a libpq DSN plus the standard `PG*` variables. No credentials in code, and the LLM never sees them. |
 
-| File | Role | Knows about MCP? |
-|---|---|---|
-| `db.py` | Connection settings from the environment, read-only session | no |
-| `audit_store.py` | Two parameterized SQL queries | no |
-| `init_demo_db.py` | Creates DB `pipeline_triage_demo` and seeds 5 fake runs | no |
-| `server.py` | Publishes the two queries as MCP tools | **yes, only this file** |
-| `tests/` | DB tests + a real MCP client talking to `server.py` over stdio | |
+## Project layout
 
-The MCP layer is a thin wrapper of about 50 lines. Everything else is ordinary data-engineering code.
+```
+mcp/pipeline_triage/
+├── src/pipeline_triage/
+│   ├── server.py          # MCP adapter: tool definitions + entry point
+│   ├── repository.py      # PipelineRunRepository: parameterized, read-only queries
+│   ├── models.py          # Pydantic domain models (also the tools' output schemas)
+│   ├── config.py          # Settings from environment
+│   ├── demo_data.py       # Guarded demo seeder (only *_demo databases)
+│   └── sql/               # schema.sql, seed_demo_data.sql
+├── tests/                 # repository tests + MCP protocol tests (in-process and stdio)
+└── docs/diagrams/         # animated SVGs above
+```
 
-## Run it
+## Running locally
 
-Prerequisites: a local PostgreSQL you can reach with `psql`, plus `uv`. Node is only needed for Inspector.
+Requires Python 3.11+, [uv](https://docs.astral.sh/uv/) and a reachable PostgreSQL (tested on 14).
 
 ```bash
 cd mcp/pipeline_triage
 uv sync
-uv run python init_demo_db.py          # creates pipeline_triage_demo (touches nothing else)
-uv run pytest -q                       # 10 tests: SQL layer + real MCP client/server
+uv run pipeline-triage-seed-demo        # creates pipeline_triage_demo with 7 synthetic runs
+uv run pytest                           # 14 tests
 ```
 
-**Configuration.** `PIPELINE_TRIAGE_DSN` (optional, default `dbname=pipeline_triage_demo`). Host, user and password come from the standard `PGHOST`, `PGUSER` and `PGPASSWORD` variables or from libpq defaults; see `.env.example`. No credentials are in the code. The seeder refuses to run against any database whose name doesn't end in `_demo`.
-
-### 1. Test with MCP Inspector (no AI involved)
-
-```bash
-uv run mcp dev server.py               # opens the Inspector UI in the browser
-```
-
-In the **Tools** tab, click *List Tools*, then run `list_failed_runs` with `2026-11-15`. You should get runs 101 and 102. Then run `get_run_details` with `101`.
-
-Scriptable version:
-
-```bash
-npx -y @modelcontextprotocol/inspector@2.13.0 --cli "$PWD/.venv/bin/python" server.py --method tools/list
-npx -y @modelcontextprotocol/inspector@2.13.0 --cli "$PWD/.venv/bin/python" server.py \
-    --method tools/call --tool-name list_failed_runs --tool-arg business_date=2026-11-15
-```
-
-### 2. Use it from Claude Code (the AI host)
+**Connect it to Claude Code:**
 
 ```bash
 claude mcp add --scope local pipeline-triage -- \
-    uv run --directory "$PWD" python server.py
-claude mcp list                        # pipeline-triage: ✔ Connected
+    uv run --directory "$PWD" pipeline-triage-server
 ```
 
-Then ask Claude Code: *"Which pipelines failed on November 15, 2026, and why?"* It calls `list_failed_runs`, then `get_run_details` for each run, and explains the errors. To remove it: `claude mcp remove pipeline-triage -s local`.
+Then ask: *"Which pipelines failed on November 15, 2026, and why?"*
 
-## Concepts
+**Inspect it without an AI:**
 
-**What problem MCP solves here.** On-call engineers dig through audit tables by hand. We want an assistant to do that, but safely: it should get *specific, read-only operations*, not a database password. MCP is the standard plug that turns those operations into tools any AI host can discover and call.
+```bash
+npx @modelcontextprotocol/inspector uv run --directory "$PWD" pipeline-triage-server
+```
 
-**Why MCP instead of letting the AI run SQL directly?**
-- *Safety:* the AI can only call `list_failed_runs` and `get_run_details`. There is no arbitrary SQL. Values are bound as parameters, and the session is `READ ONLY`, so Postgres itself rejects writes.
-- *Credentials stay put:* the DSN lives in the server's environment. The LLM never sees it.
-- *Reuse:* the same server works in Claude Code, Claude Desktop, IDEs and Inspector, without per-host glue code.
-- *Domain knowledge in one place:* "failed" means `status = 'FAILED'`, written once in the server, not re-guessed by the model each time.
+Configuration: `PIPELINE_TRIAGE_DATABASE_DSN` (default `dbname=pipeline_triage_demo`). See `.env.example`.
 
-**Host vs client vs server.**
-- **Host:** the app with the LLM (here, Claude Code). It owns the conversation and permissions, and the LLM inside it **decides** which tool to call.
-- **Client:** a connector inside the host, one per server. It launches `server.py` and speaks JSON-RPC to it over stdin/stdout.
-- **Server:** `server.py`. It advertises tools and **executes** them. There is no LLM inside it.
+## Verification
 
-**Tool discovery and invocation.**
-1. *Discovery* (`tools/list`, at connect time): the server returns each tool's name, description and JSON Schema. The SDK builds these from the Python function name, docstring and type hints, so `run_id: int` becomes `{"type": "integer"}`. The docstring is effectively a prompt: it tells the model when to use the tool.
-2. *Invocation* (`tools/call`): the client sends `{"name": "list_failed_runs", "arguments": {"business_date": "2026-11-15"}}`, and the server runs the function and returns the result.
+| Layer | How it was verified |
+|---|---|
+| Repository | Tests against real PostgreSQL: date filtering, the full audit record, unknown ids, rejected writes, seeder refusing non-demo databases |
+| MCP contract | An MCP client checks that discovery lists exactly two tools with typed schemas, that results match direct SQL, that invalid dates and injection strings are rejected before the database, and that the installed entry point works over stdio |
+| Protocol tooling | MCP Inspector CLI: `tools/list` and `tools/call` output compared with `psql` |
+| AI host | Live Claude Code session: the model chained `list_failed_runs`, then `get_run_details` ×2, and produced the answer shown in the diagram |
+| Code quality | `ruff check` and `ruff format` both pass |
 
-**MCP vs a REST API.** REST is built for programs whose developer already knows which endpoint to call. MCP is built for an AI that discovers capabilities at runtime: tools describe themselves in model-readable form, sessions are stateful, and the transport can be local stdio (no port and no web server). They also stack: an MCP server often just wraps a REST API.
+## Path to production
 
-**How the PostgreSQL rows reach Claude.** `psycopg` returns rows, and `audit_store` converts dates to ISO strings. The tool returns a `list`, or a `TypedDict` that also gives it an output schema. The SDK serializes that into a JSON-RPC result with `structuredContent` and sends it over stdout. The client puts it in Claude's context as a tool result, and Claude reads it and writes the answer, or calls another tool first.
+- **Identity:** a dedicated `SELECT`-only role on the audit schema or a read replica, with credentials from a secrets manager.
+- **Transport:** Streamable HTTP behind OAuth, so a whole team shares one governed server instead of local processes.
+- **Observability:** structured logs of every tool call (who, which tool, arguments, latency) for audit.
+- **Scale:** pagination and a date-range limit on `list_failed_runs`. Add a connection pool once traffic justifies it.
+- **Next capabilities:** run history per pipeline (to tell a regression from a known flaky job), owner/runbook lookup, and only then any write action such as triggering a rerun, behind explicit human approval.
 
-**Errors (SDK v2 detail).** A raised `ToolError` sends its message to the model, which lets it fix bad input itself. Any other exception counts as a crash: the client only sees "Error executing tool", and the details stay on the server.
+## Built with AI
 
-## Interview questions
-
-1. **Does the MCP server call the LLM?** No. The server only exposes tools. The LLM runs in the host and decides when to call them, and the server just executes calls and returns data.
-2. **How do you stop an AI from running destructive SQL through MCP?** Don't offer a generic `run_sql` tool. Expose narrow tools, bind parameters, use a read-only transaction or a role with only `SELECT` privileges, and keep credentials inside the server's environment.
-3. **How does the model know what a tool does and which arguments it takes?** Through discovery: `tools/list` returns the name, description and JSON input schema, which the host passes to the model. Good descriptions directly improve tool selection.
-4. **stdio vs Streamable HTTP transport?** stdio: the host launches the server as a local subprocess, which is simple, needs no network, and gives one user per process. HTTP: a remote, shared server that needs authentication and scales. Use HTTP for a team-wide service.
-5. **MCP vs REST: when would you skip MCP?** When a regular program already knows exactly which endpoint to call, REST or a direct library call is simpler. MCP pays off when an AI has to discover and choose operations itself, and when you want one integration to work across many AI hosts.
-
-## Out of scope for this first POC
-
-No write tools, auth, HTTP transport, resources or prompts. Natural next steps: a `SELECT`-only database role, then Streamable HTTP with auth for team use.
+This POC was built with Claude Code as an implementation partner. The problem framing, scope and constraints were set up front: read-only access, no arbitrary SQL, PostgreSQL, isolation from the rest of the repo, and verification at every layer. The output was then reviewed and iterated on. Every claim in this README is backed by the tests or by the live Claude Code run described above.

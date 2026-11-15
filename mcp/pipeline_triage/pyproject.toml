@@ -1,16 +1,31 @@
 [project]
-name = "mcp-pipeline-triage"
-version = "0.2.0"
-description = "Read-only MCP server for triaging failed data pipelines (PostgreSQL)"
+name = "pipeline-triage"
+version = "0.3.0"
+description = "Read-only MCP server that lets an AI assistant triage failed ETL runs from a PostgreSQL audit table"
+readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "mcp[cli]>=2.3,<3.0",
     "psycopg[binary]>=3.2,<4.0",
 ]
 
+[project.scripts]
+pipeline-triage-server = "pipeline_triage.server:main"
+pipeline-triage-seed-demo = "pipeline_triage.demo_data:main"
+
+[build-system]
+requires = ["uv_build>=0.9,<0.13"]
+build-backend = "uv_build"
+
 [dependency-groups]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "ruff>=0.6"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
