@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Hands-on engineering across the LLM agent stack: LangChain, RAG, LangGraph and MCP"
 readme = "README.md"
 authors = [
-    { name = "ereshkbr123", email = "125633298+ereshkbr123@users.noreply.github.com" }
+    { name = "eresh-thekbr" }
 ]
 requires-python = ">=3.11"
 dependencies = [
