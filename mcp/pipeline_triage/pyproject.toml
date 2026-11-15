@@ -1,8 +1,16 @@
 [project]
 name = "mcp-pipeline-triage"
-version = "0.1.0"
-description = "A small read-only data engineering MCP demo"
+version = "0.2.0"
+description = "Read-only MCP server for triaging failed data pipelines (PostgreSQL)"
 requires-python = ">=3.11"
 dependencies = [
-    "mcp[cli]>=2.0,<3.0",
+    "mcp[cli]>=2.3,<3.0",
+    "psycopg[binary]>=3.2,<4.0",
 ]
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

@@ -1,37 +1,40 @@
-"""Database tests run without an AI model or MCP host."""
-import tempfile
-import unittest
-from pathlib import Path
+"""Database layer tests: real PostgreSQL, no MCP and no AI model involved."""
+import psycopg
+import pytest
 
-from audit_store import get_run_details, list_failed_runs
-from init_demo_db import create_demo_db
-
-
-class PipelineAuditTests(unittest.TestCase):
-    def setUp(self):
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.db_path = Path(self.temp_dir.name) / "demo.sqlite3"
-        create_demo_db(self.db_path)
-
-    def tearDown(self):
-        self.temp_dir.cleanup()
-
-    def test_failed_runs_are_filtered_by_date(self):
-        rows = list_failed_runs("2026-11-15", self.db_path)
-        self.assertEqual([row["run_id"] for row in rows], [101, 102])
-
-    def test_run_details_include_failure_evidence(self):
-        run = get_run_details(101, self.db_path)
-        self.assertEqual(run["pipeline_name"], "customer_master_daily")
-        self.assertIn("shuffle", run["error_message"].lower())
-
-    def test_no_match(self):
-        self.assertIsNone(get_run_details(999, self.db_path))
-
-    def test_invalid_date(self):
-        with self.assertRaises(ValueError):
-            list_failed_runs("2026-99-99", self.db_path)
+import audit_store
+from db import connect_read_only
+from init_demo_db import seed
 
 
-if __name__ == "__main__":
-    unittest.main()
+@pytest.fixture(scope="module", autouse=True)
+def seeded_db():
+    seed()  # resets the dedicated *_demo database to known rows
+
+
+def test_failed_runs_filtered_by_date():
+    rows = audit_store.list_failed_runs("2026-11-15")
+    assert [r["run_id"] for r in rows] == [101, 102]
+    assert all(r["status"] == "FAILED" for r in rows)
+
+
+def test_run_details_include_failure_evidence():
+    run = audit_store.get_run_details(102)
+    assert run["pipeline_name"] == "payments_ingest"
+    assert "schema mismatch" in run["error_message"].lower()
+    assert run["started_at"].startswith("2026-11-15T07:15:00")
+
+
+def test_unknown_run_returns_none():
+    assert audit_store.get_run_details(999) is None
+
+
+@pytest.mark.parametrize("bad", ["2026-99-99", "15/11/2026", "2026-11-15'; DROP TABLE pipeline_runs;--"])
+def test_invalid_date_rejected_before_sql(bad):
+    with pytest.raises(ValueError):
+        audit_store.list_failed_runs(bad)
+
+
+def test_connection_is_read_only():
+    with connect_read_only() as conn, pytest.raises(psycopg.errors.ReadOnlySqlTransaction):
+        conn.execute("DELETE FROM pipeline_runs")
