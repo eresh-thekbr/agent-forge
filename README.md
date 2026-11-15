@@ -20,6 +20,7 @@ Hands-on engineering across the LLM agent stack (**LangChain, RAG, LangGraph and
 | **[Document Q&A (RAG)](rag/docqa/)** | Answers questions grounded in a PDF: load → chunk → embed → retrieve → Claude agent with a retriever tool | Vector store switchable between **FAISS** and **PostgreSQL/pgvector** through configuration, with no code changes; local sentence-transformer embeddings; UI-agnostic backend |
 | **[Chat frontends](frontend/)** | Terminal chat and a Streamlit browser UI for the RAG agent | Depends only on the agent's public interface, so interfaces can change without touching ingestion or retrieval |
 | **[LangGraph agent](graphs/agent_poc/)** | Rebuilds the document agent as an explicit `StateGraph` with multi-turn memory | Hand-wired tool loop (`ToolNode`, `tools_condition`), conditional routing and cycles, checkpointer-backed memory per `thread_id` |
+| **[Knowledge graph + LangGraph](graphs/knowledge_poc/)** | Answers "who works on projects that use X?" by a two-hop traversal over a small knowledge graph, orchestrated as a LangGraph workflow | Retrieval by explicit relationships with evidence paths, not text similarity; separates "unknown entity" from "no matching facts"; no API key needed; unit-tested; Streamlit playground |
 | **[LangChain foundations](chains/)** | Focused scripts on the agent building blocks | `create_agent`, structured output, streaming, message history and memory, multimodal input, dynamic prompts and models, custom hooks (`before_model`, `wrap_model_call`) and built-in middleware such as summarization |
 
 ```mermaid
@@ -27,6 +28,7 @@ flowchart LR
     A["LangChain foundations<br/>chains/"] --> B["Document Q&A (RAG)<br/>rag/docqa"]
     B --> C["Chat frontends<br/>frontend/"]
     B --> D["LangGraph agent<br/>graphs/agent_poc"]
+    D --> F["Knowledge graph<br/>graphs/knowledge_poc"]
     A --> E["MCP server<br/>mcp/pipeline_triage"]
     B -. "FAISS or pgvector" .-> P[(PostgreSQL)]
     E -. "read-only" .-> P
@@ -58,6 +60,9 @@ uv run streamlit run frontend/ui.py       # browser
 # LangGraph agent with multi-turn memory
 uv run python -m graphs.agent_poc
 
+# Knowledge graph queried by a LangGraph workflow (no API key)
+uv run python -m graphs.knowledge_poc
+
 # MCP server: separate subproject with its own environment
 cd mcp/pipeline_triage && uv sync && uv run pipeline-triage-seed-demo && uv run pytest
 ```
@@ -72,5 +77,6 @@ agent-forge/
 ├── rag/docqa/           RAG pipeline: loader, splitter, vector store, retriever tool, agent
 ├── frontend/            Terminal and Streamlit interfaces for the RAG agent
 ├── graphs/agent_poc/    LangGraph agent: state, routing, tool loop, memory
+├── graphs/knowledge_poc/ Knowledge graph + LangGraph workflow with evidence paths
 └── mcp/pipeline_triage/ Read-only MCP server over PostgreSQL (standalone subproject)
 ```
