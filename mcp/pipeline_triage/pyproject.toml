@@ -1,0 +1,8 @@
+[project]
+name = "mcp-pipeline-triage"
+version = "0.1.0"
+description = "A small read-only data engineering MCP demo"
+requires-python = ">=3.11"
+dependencies = [
+    "mcp[cli]>=2.0,<3.0",
+]
