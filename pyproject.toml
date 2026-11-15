@@ -1,7 +1,7 @@
 [project]
 name = "agent-forge"
 version = "0.1.0"
-description = "Add your description here"
+description = "Hands-on engineering across the LLM agent stack: LangChain, RAG, LangGraph and MCP"
 readme = "README.md"
 authors = [
     { name = "ereshkbr123", email = "125633298+ereshkbr123@users.noreply.github.com" }
