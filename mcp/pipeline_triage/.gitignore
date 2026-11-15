@@ -1,0 +1,5 @@
+# Database is seeded locally and contains demo data only
+*.sqlite3
+.venv/
+__pycache__/
+.pytest_cache/
